@@ -4,26 +4,37 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Password
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +42,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -39,6 +53,40 @@ import com.passvault.app.security.BiometricVault
 
 private val autoLockOptions = listOf(0, 30, 60, 300, 900, 1800, -1).map { it to durationLabel(it) }
 private val clipboardOptions = listOf(10, 20, 30, 60, 120, 0).map { it to if (it == 0) "Never" else durationLabel(it) }
+
+@Composable
+private fun SettingRow(
+    icon: ImageVector,
+    color: Color,
+    title: String,
+    subtitle: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconBadge(icon, color)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        when {
+            trailing != null -> trailing()
+            onClick != null -> Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,76 +97,89 @@ fun SettingsScreen(vm: AppViewModel, activity: FragmentActivity) {
     val bioAvailable = remember { BiometricVault.isAvailable(ctx) }
     var dialog by remember { mutableStateOf<String?>(null) }
     val info = remember(db) { vm.dbInfo() }
+    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
-            TopAppBar(
+            LargeTopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = { vm.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    IconButton(onClick = { vm.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
                 },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+                scrollBehavior = scroll,
             )
         },
         snackbarHost = { SnackbarHost(LocalSnackbar.current) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            SectionHeader("Security")
-            ListItem(
-                modifier = Modifier.clickable { dialog = "autolock" },
-                headlineContent = { Text("Auto-lock") },
-                supportingContent = { Text("Lock after inactivity or in background: ${durationLabel(vm.autoLockSec)}") },
-            )
-            ListItem(
-                modifier = Modifier.clickable { dialog = "clipboard" },
-                headlineContent = { Text("Clear clipboard") },
-                supportingContent = {
-                    Text(if (vm.clipboardTimeoutSec == 0) "Never" else "After ${durationLabel(vm.clipboardTimeoutSec)}")
-                },
-            )
-            if (bioAvailable) {
-                ListItem(
-                    modifier = Modifier.clickable {
-                        if (vm.biometricEnabledForDb) vm.disableBiometric() else dialog = "bio"
-                    },
-                    headlineContent = { Text("Fingerprint unlock") },
-                    supportingContent = { Text("For this database, using the Android Keystore") },
-                    trailingContent = {
-                        Switch(checked = vm.biometricEnabledForDb, onCheckedChange = {
-                            if (it) dialog = "bio" else vm.disableBiometric()
-                        })
-                    },
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            SectionCard(title = "Security") {
+                SettingRow(
+                    Icons.Rounded.Timer, AccentColors[0], "Auto-lock",
+                    "Lock after inactivity or in background: ${durationLabel(vm.autoLockSec)}",
+                    onClick = { dialog = "autolock" },
                 )
+                CardDivider()
+                SettingRow(
+                    Icons.Rounded.ContentPaste, AccentColors[1], "Clear clipboard",
+                    if (vm.clipboardTimeoutSec == 0) "Never" else "After ${durationLabel(vm.clipboardTimeoutSec)}",
+                    onClick = { dialog = "clipboard" },
+                )
+                if (bioAvailable) {
+                    CardDivider()
+                    SettingRow(
+                        Icons.Rounded.Fingerprint, AccentColors[3], "Fingerprint unlock",
+                        "For this database, using the Android Keystore",
+                        onClick = { if (vm.biometricEnabledForDb) vm.disableBiometric() else dialog = "bio" },
+                        trailing = {
+                            Switch(checked = vm.biometricEnabledForDb, onCheckedChange = {
+                                if (it) dialog = "bio" else vm.disableBiometric()
+                            })
+                        },
+                    )
+                }
             }
 
-            SectionHeader("Database")
-            ListItem(
-                modifier = Modifier.clickable { dialog = "rename" },
-                headlineContent = { Text("Database name") },
-                supportingContent = { Text(db.content.meta.name.ifBlank { "(none)" }) },
-            )
-            ListItem(
-                modifier = Modifier.clickable { dialog = "masterkey" },
-                headlineContent = { Text("Change master password") },
-                supportingContent = { Text("Re-encrypts the database with a new master key") },
-            )
-            ListItem(
-                headlineContent = { Text("File") },
-                supportingContent = { Text(vm.displayName(uri)) },
-            )
-            info?.let {
-                ListItem(
-                    headlineContent = { Text("Format") },
-                    supportingContent = {
-                        Text("${it.format} · ${it.cipher}\n${it.kdf}\n${it.entries} entries in ${it.groups} groups")
-                    },
+            SectionCard(title = "Database") {
+                SettingRow(
+                    Icons.Rounded.Badge, AccentColors[2], "Database name",
+                    db.content.meta.name.ifBlank { "(none)" },
+                    onClick = { dialog = "rename" },
                 )
+                CardDivider()
+                SettingRow(
+                    Icons.Rounded.Password, AccentColors[6], "Change master password",
+                    "Re-encrypts the database with a new master key",
+                    onClick = { dialog = "masterkey" },
+                )
+                CardDivider()
+                SettingRow(Icons.Rounded.Description, AccentColors[5], "File", vm.displayName(uri))
+                info?.let {
+                    CardDivider()
+                    SettingRow(
+                        Icons.Rounded.Info, AccentColors[7], "Format",
+                        "${it.format} · ${it.cipher}\n${it.kdf}\n${it.entries} entries in ${it.groups} groups",
+                    )
+                }
             }
 
-            SectionHeader("About")
-            ListItem(
-                headlineContent = { Text("PassVault 1.0") },
-                supportingContent = { Text("Reads and writes KeePass 2.x .kdbx files (KDBX 3.1 and 4.x).") },
-            )
+            SectionCard(title = "About") {
+                SettingRow(
+                    Icons.Rounded.Shield, MaterialTheme.colorScheme.primary, "PassVault 1.0",
+                    "Reads and writes KeePass 2.x .kdbx files (KDBX 3.1 and 4.x).",
+                )
+            }
             VSpace(32)
         }
     }
@@ -197,7 +258,7 @@ private fun ChangeMasterKeyDialog(hasKeyFile: Boolean, onDismiss: () -> Unit, on
         onDismissRequest = onDismiss,
         title = { Text("Change master password") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PasswordField(pw, { pw = it }, "New password")
                 StrengthBar(pw)
                 PasswordField(confirm, { confirm = it }, "Confirm", imeAction = ImeAction.Done)

@@ -99,6 +99,44 @@ class VaultOpsTest {
     }
 
     @Test
+    fun restoreReturnsEntryToOriginalGroupAfterSave() {
+        var db = VaultOps.create("T", VaultOps.credentials("pw", null))
+        val root = db.content.group.uuid
+        db = VaultOps.addGroup(db, root, "Email")
+        val email = db.content.group.groups.single { it.name == "Email" }.uuid
+        val (d1, id) = VaultOps.addEntry(db, email, EntryDraft(title = "Gmail"))
+        assertNull("not in bin, nothing to restore", VaultOps.restoreTarget(d1, id))
+
+        // The recorded original group must survive saving and reopening the file.
+        db = roundTrip(VaultOps.deleteEntry(d1, id), "pw")
+        assertTrue(VaultOps.isInRecycleBin(db, VaultOps.entry(db, id)!!.first.uuid))
+        assertEquals(email, VaultOps.restoreTarget(db, id)!!.uuid)
+
+        db = roundTrip(VaultOps.restoreEntry(db, id), "pw")
+        val (parent, e) = VaultOps.entry(db, id)!!
+        assertEquals(email, parent.uuid)
+        assertEquals("Gmail", VaultOps.title(e))
+        assertEquals(listOf(id), VaultOps.search(db, "Gmail").map { it.uuid })
+    }
+
+    @Test
+    fun restoreFallsBackToRootWhenOriginalGroupIsGone() {
+        var db = VaultOps.create("T", VaultOps.credentials("pw", null))
+        val root = db.content.group.uuid
+        db = VaultOps.addGroup(db, root, "Temp")
+        val temp = db.content.group.groups.single { it.name == "Temp" }.uuid
+        val (d1, id) = VaultOps.addEntry(db, temp, EntryDraft(title = "X"))
+        db = VaultOps.deleteEntry(d1, id)
+        // Remove the original group entirely (to the bin, then permanently).
+        db = VaultOps.deleteGroup(VaultOps.deleteGroup(db, temp), temp)
+        assertNull(VaultOps.group(db, temp))
+
+        assertEquals(root, VaultOps.restoreTarget(db, id)!!.uuid)
+        db = VaultOps.restoreEntry(db, id)
+        assertEquals(root, VaultOps.entry(db, id)!!.first.uuid)
+    }
+
+    @Test
     fun generatorRespectsOptions() {
         repeat(50) {
             val p = PasswordGenerator.generate(GeneratorOptions(length = 16, symbols = false, excludeAmbiguous = true))

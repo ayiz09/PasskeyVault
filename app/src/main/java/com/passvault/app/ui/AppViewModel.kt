@@ -307,6 +307,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         message = "Entry deleted"
     }
 
+    fun restoreEntry(uuid: UUID) {
+        val current = db ?: return
+        val target = VaultOps.restoreTarget(current, uuid) ?: return
+        commit(VaultOps.restoreEntry(current, uuid))
+        popUntil { it !is Screen.EntryView && it !is Screen.EditEntry }
+        message = "Entry restored to ${target.name.ifBlank { "root" }}"
+    }
+
     fun addGroup(parent: UUID, name: String) {
         db?.let { commit(VaultOps.addGroup(it, parent, name.trim())) }
     }

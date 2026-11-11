@@ -205,15 +205,43 @@ object VaultOps {
         }
     }
 
-    /** Moves to the recycle bin, or deletes permanently if already there / bin disabled. */
+    /**
+     * Moves to the recycle bin, or deletes permanently if already there / bin disabled.
+     * When recycling, the original group is recorded in PreviousParentGroup (KDBX 4.1) so it can be restored.
+     */
     fun deleteEntry(db: KeePassDatabase, uuid: UUID): KeePassDatabase {
         val (parent, _) = entry(db, uuid) ?: return db
         return if (db.content.meta.recycleBinEnabled && !isInRecycleBin(db, parent.uuid)) {
-            db.withRecycleBin { bin -> moveEntry(uuid, bin) }
+            db.withMovedFrom(uuid, parent.uuid).withRecycleBin { bin -> moveEntry(uuid, bin) }
         } else {
             db.removeEntry(uuid)
         }
     }
+
+    /**
+     * The group a recycled entry would be restored to: its previous group if that still exists outside
+     * the recycle bin, otherwise the root group. Null if the entry is not in the recycle bin.
+     */
+    fun restoreTarget(db: KeePassDatabase, uuid: UUID): Group? {
+        val (parent, e) = entry(db, uuid) ?: return null
+        if (!isInRecycleBin(db, parent.uuid)) return null
+        val previous = e.previousParentGroup
+            ?.let { group(db, it) }
+            ?.takeIf { !isInRecycleBin(db, it.uuid) }
+        return previous ?: root(db)
+    }
+
+    /** Moves a recycled entry back out of the recycle bin (see [restoreTarget]). */
+    fun restoreEntry(db: KeePassDatabase, uuid: UUID): KeePassDatabase {
+        val (parent, _) = entry(db, uuid) ?: return db
+        val target = restoreTarget(db, uuid) ?: return db
+        return db.withMovedFrom(uuid, parent.uuid).moveEntry(uuid, target.uuid)
+    }
+
+    private fun KeePassDatabase.withMovedFrom(entryUuid: UUID, fromGroup: UUID): KeePassDatabase =
+        modifyEntry(entryUuid) {
+            copy(previousParentGroup = fromGroup, times = times?.copy(locationChanged = Instant.now()))
+        }
 
     fun addGroup(db: KeePassDatabase, parentUuid: UUID, name: String): KeePassDatabase {
         val g = Group(uuid = UUID.randomUUID(), name = name, icon = PredefinedIcon.Folder)
